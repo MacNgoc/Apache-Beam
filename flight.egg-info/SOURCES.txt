@@ -1,0 +1,13 @@
+setup.py
+flight.egg-info/PKG-INFO
+flight.egg-info/SOURCES.txt
+flight.egg-info/dependency_links.txt
+flight.egg-info/requires.txt
+flight.egg-info/top_level.txt
+pipelines/__init__.py
+pipelines/airport_pipeline.py
+pipelines/schema_table_bigquery.py
+test/__init__.py
+test/test_local.py
+test/test_pipeline.py
+test/test_unit.py
