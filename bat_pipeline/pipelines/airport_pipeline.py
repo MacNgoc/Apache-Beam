@@ -2,13 +2,10 @@
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 import csv
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from  pipelines.schema_table_bigquery import table_schema
+#sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from  .schema_table_bigquery import table_schema
 import json
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 #os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "/Users/macthibichngoc/Documents/Works/DATA_ENGINEER/Airflow/google_cloud/mlopsmac-080afb6fa874.json"
 
@@ -177,52 +174,40 @@ def run():
     
     
     parser = argparse.ArgumentParser(description='Run pipeline on the cloud')
-    parser.add_argument('-p', '--project', help = 'Unique project ID', required=True)
-    parser.add_argument('-b','--bucket', help='Bucket where your data were ingested', default='dataflow-mac')
-    parser.add_argument('-r', '--region', help = 'Region in which to run the Dataflow job. Choose the same region as your bucket.', default='us-central1')
-    parser.add_argument('-d', '--dataset', help = 'Bigquery dataset', default = 'flights')
-    parser.add_argument('-ru', '--runner', help = "executed environment", default = 'DataflowRunner')
+    parser.add_argument('-i', '--input', help = 'path to your input', default='gs://dataflow-mac/flights/raw/*.csv')
+    parser.add_argument('-si', '--side_input', help = "path to side input", default='gs://dataflow-mac/flights/airports/airports.csv.gz')
+    parser.add_argument('-o', '--output', help="path to your output, something like mlopsmac:flights.simevents", default='mlopsmac:flights.simevents')
+    parser.add_argument('-of', '--output_flight', help="path to store flight output", default='gs://dataflow-mac/flights/tzcorr/all_flights')
 
-    
     known_args, beam_args = parser.parse_known_args()
 
 
     beam_options = PipelineOptions(
         beam_args,
-        runner = known_args.runner,
-        project = known_args.project,
-        job_name = "timecorrection-1",
-        temp_location='gs://{}/flights/staging/'.format(known_args.bucket),
-        region = known_args.region,
+        job_name = "timecorrection-correct-arg",
         save_main_session=True
     )
-
-    airports_filename = 'gs://{}/flights/airports/airports.csv.gz'.format(known_args.bucket)
-    flights_raw_file = 'gs://{}/flights/raw/*.csv'.format(known_args.bucket)
-    flights_output = 'gs://{}/flights/tzcorr/all_flights'.format(known_args.bucket)
-    events_output = '{}:{}.simevents'.format(known_args.project, known_args.dataset)
-    gcs_location='gs://{}/flights/temps/'.format(known_args.bucket)
 
 
     pipeline = beam.Pipeline(options=beam_options)
 
-    print("Correcting timestamps and writing to Bigquery dataset {}".format(known_args.dataset))
+    print("Correcting timestamps and writing to Bigquery dataset {}".format(known_args.output))
 
     airports = (pipeline 
-        | "airports: read" >> beam.io.ReadFromText(airports_filename)
+        | "airports: read" >> beam.io.ReadFromText(known_args.side_input)
         | "airports: fields" >> beam.Map(lambda line: next(csv.reader([line])))
         | "airports:tz" >> beam.Map(lambda fields: (fields[0], addtimezone(fields[21], fields[26])))
     )
 
     flights = (pipeline
-        | "flights:read" >> beam.io.ReadFromText(flights_raw_file)
+        | "flights:read" >> beam.io.ReadFromText(known_args.input)
         | "flights:convert to dict" >> beam.FlatMap(convert_csv_to_dict )
         | 'flights: tzcorr' >> beam.FlatMap(tz_correct, beam.pvalue.AsDict(airports))
     )
 
     (flights 
         | "flights:tostring" >> beam.Map(lambda fields: json.dumps(fields) )
-        | "flights:out" >> beam.io.WriteToText(flights_output)
+        | "flights:out" >> beam.io.WriteToText(known_args.output_flight)
     )
 
     events = flights | beam.FlatMap(get_next_event)
@@ -231,11 +216,10 @@ def run():
     (events
         | 'events:totablerow' >> beam.Map(lambda fields: create_row(fields) )
         | 'events:out'  >> beam.io.WriteToBigQuery(
-                                events_output,
+                                known_args.output,
                                 schema=table_schema,
                                 write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-                                custom_gcs_temp_location = gcs_location )
+                                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED)
     )  
     pipeline.run()
 

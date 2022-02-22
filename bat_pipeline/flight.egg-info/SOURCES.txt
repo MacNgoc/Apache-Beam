@@ -7,7 +7,3 @@ flight.egg-info/top_level.txt
 pipelines/__init__.py
 pipelines/airport_pipeline.py
 pipelines/schema_table_bigquery.py
-test/__init__.py
-test/test_local.py
-test/test_pipeline.py
-test/test_unit.py

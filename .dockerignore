@@ -1,0 +1,8 @@
+*/*/__pycache__*
+*/flight.egg-info*
+*/schema.json
+create_bucket_gcp.sh
+pub.py
+streaming.py
+sub.py
+
